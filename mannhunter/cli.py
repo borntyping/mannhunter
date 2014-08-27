@@ -1,48 +1,21 @@
 """Command line entry point to Mannhunter"""
 
-from __future__ import print_function
-
 import logging
-import time
 
 import click
 
-import mannhunter
-
-
-class Interval(object):
-    def __init__(self, interval):
-        self.interval = interval
-
-    def __enter__(self):
-        self.start = time.time()
-        return self
-
-    def __exit__(self, *exc_info):
-        time.sleep(self.interval - (time.time() - self.start))
-
-
-class Mannhunter(object):
-    def __init__(self):
-        self.log = logging.getLogger('mannhunter')
-
-    def do_thing(self):
-        self.log.info("Started doing a thing")
-        time.sleep(0.5)
-        self.log.info("Stopped doing a thing")
-
-    def run(self):
-        while True:
-            with Interval(5):
-                self.do_thing()
-        return self
+import mannhunter.core
 
 
 @click.command()
 @click.version_option(version=mannhunter.__version__)
-def main():
+@click.argument(
+    'host', type=click.STRING, default='localhost', envvar='RIEMANN_HOST')
+@click.argument(
+    'port', type=click.INT, default=5555, envvar='RIEMANN_PORT')
+def main(host, port):
     logging.basicConfig(
-        level=logging.INFO,
+        level=logging.DEBUG,
         format='%(asctime)s:%(levelname)s:%(name)s:%(message)s')
 
-    return Mannhunter().run()
+    return mannhunter.core.Mannhunter(host, port).run()

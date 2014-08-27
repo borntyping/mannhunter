@@ -27,7 +27,8 @@ setuptools.setup(
 
     entry_points = {
         'console_scripts': [
-            'mannhunter = mannhunter.cli:main'
+            'mannhunter = mannhunter.cli:main',
+            'mannhunter-test = mannhunter.tests.cli:main'
         ]
     },
 
