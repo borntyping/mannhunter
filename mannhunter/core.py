@@ -20,6 +20,12 @@ def percentage(x, y):
     return float(x) / float(y) * 100
 
 
+def create_riemann_client(host, port, timeout):
+    """Creates a Riemann client instance, passing correct types"""
+    return riemann_client.client.Client(riemann_client.transport.TCPTransport(
+        str(host), int(port), float(timeout)))
+
+
 class Interval(object):
     """Sleeps for the time since the interval was last reset when called"""
 
@@ -45,9 +51,9 @@ class MannhunterConfigParser(ConfigParser.RawConfigParser):
             if not self.has_option('include', 'files'):
                 raise ValueError("[include] section must define files=")
 
-            pattern = os.path.join(cwd, self.get('include', 'files'))
-            for filename in glob.glob(pattern):
-                self.read(filename)
+            for pattern in self.get('include', 'files').split():
+                for filename in glob.glob(os.path.join(cwd, pattern)):
+                    self.read(filename)
 
 
 class Mannhunter(object):
@@ -78,12 +84,17 @@ class Mannhunter(object):
 
     @classmethod
     def configure(cls, filename=None, **overrides):
-        """Configures a Mannhunter instance based on a file(s)"""
-        config = MannhunterConfigParser()
+        """Configures a Mannhunter instance based on a file(s)
 
+        Similar to supervisor, an ``[include]`` directive allows additional
+        files to be included::
+
+            [include]
+            files=
+
+        """
+        config = MannhunterConfigParser()
         config.add_section('mannhunter')
-        config.set('mannhunter', 'host', 'localhost')
-        config.set('mannhunter', 'port', 5555)
 
         if filename is not None:
             config.read(filename)
@@ -99,39 +110,47 @@ class Mannhunter(object):
             if section.startswith('program:'):
                 instance.add_program(name=section[8:], **config[section])
 
-        for name, limit in instance.limits.items():
-            logging.getLogger('mannhunter.config').debug(
-                "Program '%s' has a configured limit of %sb", name, limit)
-
         return instance
 
-    def __init__(self, host, port, timeout=5, interval=5, default_limit='80%'):
+    def __init__(self, host=None, port=None, timeout=5,
+                 interval=5, default_limit='80%'):
         self.log = logging.getLogger('mannhunter')
         self.log.info("I'm going to stop you, now.")
 
         #: Supervisor RPC connection, used to collect program information
         self.supervisor = supervisor.childutils.getRPCInterface(os.environ)
 
-        #: Riemann client, used to send limit metrics
-        self.riemann = riemann_client.client.Client(
-            riemann_client.transport.TCPTransport(host, port, timeout))
+        if host is not None and port is not None:
+            self.log.debug('Sending metrics to Riemann at %s:%s', host, port)
+            self.riemann = create_riemann_client(host, port, timeout)
+        else:
+            self.log.debug('Not sending metrics to Riemann')
+            self.riemann = None
 
         #: How often to scan the processes
         self.interval = Interval(5)
 
         #: The programs that will be monitored (``name -> limits``)
         self.limits = {}
+
+        #: The limit to use for programs with no defined limit
         self.default_limit = self.parse_memory(default_limit)
+        self._default_limit = default_limit
 
-        assert all(l >= 0 for l in self.limits.values())
-        assert self.default_limit >= 0
-
-        self.log.info(
+        # Log information about the current configuration when starting
+        self.log.debug(
             "Using a default limit of %sb (%s) every %ss",
-            self.default_limit, default_limit, self.interval.interval)
+            self.default_limit, self._default_limit, self.interval.interval)
 
-    def add_program(self, name, memory='80%'):
-        self.limits[name] = self.parse_memory(memory)
+    def __enter__(self):
+        if self.riemann is not None:
+            self.riemann.__enter__()
+        return self
+
+    def __exit__(self, *exc_info):
+        if self.riemann is not None:
+            self.riemann.__exit__(*exc_info)
+        return self
 
     @property
     def supervisor(self):
@@ -141,9 +160,14 @@ class Mannhunter(object):
     def supervisor(self, value):
         self._supervisor = value
 
+    def add_program(self, name, memory='80%'):
+        """A a memory limit to ``limits`` using :py:func:`parse_memory`"""
+        self.limits[name] = self.parse_memory(memory)
+        self.log.debug("Program %s is limited to %sb", name, self.limits[name])
+
     def run(self):
         """Calls tick() with each process under Supervisor every interval"""
-        with self.riemann:
+        with self:
             while True:
                 # Wait the rest of the interval before continuing
                 with self.interval:
@@ -177,5 +201,6 @@ class Mannhunter(object):
 
     def riemann_event(self, **event):
         """Send an event to Riemann and log the description"""
-        self.riemann.event(**event)
+        if self.riemann:
+            self.riemann.event(**event)
         self.log.debug(event.get('description', "Sent an event to Riemann"))
