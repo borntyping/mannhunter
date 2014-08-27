@@ -15,5 +15,5 @@ def memory_leak():
     """Slowly consumes memory"""
     data = list()
     while True:
-        data.extend(range(10000))
+        data.extend(range(5000))
         time.sleep(0.1)

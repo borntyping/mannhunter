@@ -7,6 +7,8 @@ import time
 import os
 
 import psutil
+import riemann_client.client
+import riemann_client.transport
 import supervisor.childutils
 import supervisor.datatypes
 
@@ -20,22 +22,24 @@ class Interval(object):
 
     def __init__(self, interval):
         self.interval = interval
-        self.reset()
 
-    def __call__(self):
-        time.sleep(self.interval - (time.time() - self.last))
-        self.reset()
-        return True
-
-    def reset(self):
+    def __enter__(self):
         self.last = time.time()
+        return self
+
+    def __exit__(self, *exc_info):
+        time.sleep(self.interval - (time.time() - self.last))
+        self.last = time.time()
+        return True
 
 
 class Mannhunter(object):
-    def __init__(self, host, port):
+    def __init__(self, host, port, timeout=5, interval=5):
         self.log = logging.getLogger('mannhunter')
         self.log.info("I'm going to stop you, now.")
         self.supervisor = supervisor.childutils.getRPCInterface(os.environ)
+        self.riemann = riemann_client.client.Client(
+            riemann_client.transport.TCPTransport(host, port, timeout))
 
         self.monitoring = {
             'supermann3': {
@@ -57,7 +61,7 @@ class Mannhunter(object):
                         "Limit {} for program:{} does not exist".format(
                             limit, program))
 
-        self.wait = Interval(5)
+        self.interval = Interval(5)
 
     @property
     def supervisor(self):
@@ -69,9 +73,12 @@ class Mannhunter(object):
 
     def run(self):
         """Calls tick() with each process under Supervisor every interval"""
-        while self.wait():
-            for data in self.supervisor.getAllProcessInfo():
-                self.tick(data)
+        with self.riemann:
+            while True:
+                with self.interval:
+                    for data in self.supervisor.getAllProcessInfo():
+                        self.tick(data)
+                    # self.riemann.flush()
         return self
 
     def tick(self, data):
@@ -81,9 +88,14 @@ class Mannhunter(object):
 
     def limit_memory(self, limit, data):
         rss, vms = psutil.Process(data['pid']).memory_info()
-        self.log.debug(
-            '%s is using %ib of %ib RSS (%2f%%)',
-            data['name'], rss, limit, percentage(rss, limit))
+        usage = percentage(rss, limit)
+        description = '{0} is using {1:d}b of {2:d}b RSS ({3:2f}%)'.format(
+            data['name'], rss, limit, usage)
+        self.log.debug(description)
+        self.riemann.event(
+            service='process:{0}:limits:mem'.format(data['name']),
+            state='ok' if usage < 100 else 'critical',
+            metric_f=usage, description=description)
         if rss > limit:
             self.log.warning('Restarting program:%s', data['name'])
             self.supervisor.stopProcess(data['name'])
