@@ -112,7 +112,7 @@ class Mannhunter(object):
 
         return instance
 
-    def __init__(self, host=None, port=None, timeout=5,
+    def __init__(self, host=None, port=5555, timeout=5,
                  interval=5, default_limit='80%'):
         self.log = logging.getLogger('mannhunter')
         self.log.info("I'm going to stop you, now.")
@@ -120,7 +120,7 @@ class Mannhunter(object):
         #: Supervisor RPC connection, used to collect program information
         self.supervisor = supervisor.childutils.getRPCInterface(os.environ)
 
-        if host is not None and port is not None:
+        if host is not None:
             self.log.debug('Sending metrics to Riemann at %s:%s', host, port)
             self.riemann = create_riemann_client(host, port, timeout)
         else:

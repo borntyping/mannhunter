@@ -13,10 +13,12 @@ import mannhunter.core
     '-c', '--config',
     type=click.Path(exists=True, dir_okay=False, readable=True),
     help="A configuration file to load")
-@click.argument(
-    'host', type=click.STRING, required=False, envvar='RIEMANN_HOST')
-@click.argument(
-    'port', type=click.INT, required=False, envvar='RIEMANN_PORT')
+@click.option(
+    '-H', '--host', envvar='RIEMANN_HOST', type=click.STRING, required=False,
+    help="Riemann server hostname (optional)")
+@click.option(
+    '-P', '--port', envvar='RIEMANN_PORT', type=click.INT, default=5555,
+    help="Riemann server port")
 def main(config, host, port):
     logging.basicConfig(
         level=logging.DEBUG,

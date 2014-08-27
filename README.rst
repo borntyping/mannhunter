@@ -22,12 +22,23 @@ A memory limiting tool for `Supervisor <http://supervisord.org/>`_.
 Usage
 -----
 
-|
+::
+
+    mannhunter [--config PATH] [--host RIEMANN_HOST] [--port RIEMANN_PORT]
+
+Mannhunter can be started with or without a configuration file. By default, it will restart any programs running under Supervisor if they use more than 80% of the systems total memory. Limits for individual programs can be specified in an optional configuration file - an example configuration is provided in ``conf/example.conf``.
 
 Installation
 ------------
 
-|
+Mannhunter can be installed from pip::
+
+    pip install mannhunter
+
+If you want to install Mannhunter with a system package manager, `fpm <https://github.com/jordansissel/fpm>`_ is recommended. For example::
+
+    fpm -s python -t rpm mannhunter
+    rpm -i python-mannhunter-0.0.0-1.noarch.rpm
 
 Requirements
 ^^^^^^^^^^^^
