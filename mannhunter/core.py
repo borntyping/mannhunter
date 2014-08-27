@@ -75,28 +75,36 @@ class Mannhunter(object):
         """Calls tick() with each process under Supervisor every interval"""
         with self.riemann:
             while True:
+                # Wait the rest of the interval before continuing
                 with self.interval:
-                    for data in self.supervisor.getAllProcessInfo():
-                        self.tick(data)
-                    # self.riemann.flush()
+                    self.tick()
         return self
 
-    def tick(self, data):
-        if data['pid'] != 0 and data['name'] in self.monitoring:
-            for name, limit in self.monitoring[data['name']].items():
-                self.limits[name](limit, data)
+    def tick(self):
+        """Run the limit functions associated with each process"""
+        for data in self.supervisor.getAllProcessInfo():
+            if data['pid'] != 0 and data['name'] in self.monitoring:
+                for name, limit in self.monitoring[data['name']].items():
+                    self.limits[name](limit, data)
 
     def limit_memory(self, limit, data):
+        """Restart a process if it has used more than it's memory limit"""
         rss, vms = psutil.Process(data['pid']).memory_info()
         usage = percentage(rss, limit)
-        description = '{0} is using {1:d}b of {2:d}b RSS ({3:2f}%)'.format(
-            data['name'], rss, limit, usage)
-        self.log.debug(description)
-        self.riemann.event(
+        self.riemann_event(
             service='process:{0}:limits:mem'.format(data['name']),
-            state='ok' if usage < 100 else 'critical',
-            metric_f=usage, description=description)
+            state='ok' if usage < 100 else 'critical', metric_f=usage,
+            description='{0} is using {1:d}b of {2:d}b RSS ({3:2f}%)'.format(
+                data['name'], rss, limit, usage))
         if rss > limit:
-            self.log.warning('Restarting program:%s', data['name'])
-            self.supervisor.stopProcess(data['name'])
-            self.supervisor.startProcess(data['name'])
+            self.restart_process(data['name'])
+
+    def restart_process(self, name):
+        """Start and stop a process running under supervisor"""
+        self.log.warning('Restarting program:%s', name)
+        self.supervisor.stopProcess(name)
+        self.supervisor.startProcess(name)
+
+    def riemann_event(self, **event):
+        self.riemann.event(**event)
+        self.log.debug(event.get('description', "Sent an event to Riemann"))
