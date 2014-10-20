@@ -26,6 +26,14 @@ def create_riemann_client(host, port, timeout):
         str(host), int(port), float(timeout)))
 
 
+def sizeof_fmt(num):
+    """Formats bytes in human readable form."""
+    for x in ['bytes', 'KB', 'MB', 'GB', 'TB']:
+        if num < 1024.0:
+            return "%3.1f %s" % (num, x)
+        num /= 1024.0
+
+
 class Interval(object):
     """Sleeps for the time since the interval was last reset when called"""
 
@@ -115,7 +123,6 @@ class Mannhunter(object):
     def __init__(self, host=None, port=5555, timeout=5,
                  interval=5, default_limit='80%'):
         self.log = logging.getLogger('mannhunter')
-        self.log.info("I'm going to stop you, now.")
 
         #: Supervisor RPC connection, used to collect program information
         self.supervisor = supervisor.childutils.getRPCInterface(os.environ)
@@ -167,6 +174,7 @@ class Mannhunter(object):
 
     def run(self):
         """Calls tick() with each process under Supervisor every interval"""
+        self.log.info("I'm going to stop you, now.")
         with self:
             while True:
                 # Wait the rest of the interval before continuing
@@ -192,6 +200,24 @@ class Mannhunter(object):
                 data['name'], rss, limit, usage))
         if rss > limit:
             self.restart_process(data['name'])
+
+    def stats(self):
+        """Returns the current state of the services in supervisor."""
+        def add_mem(service):
+            """Adds current memory usage and limit to a service."""
+            try:
+                rss, vms = psutil.Process(service['pid']).memory_info()
+                service['mem_used'] = rss
+                service['mem_limit'] = self.limits[service['name']]
+            except psutil.NoSuchProcess:
+                service['mem_used'] = None
+                service['mem_limit'] = None
+            except KeyError:
+                service['mem_limit'] = None
+
+            return service
+
+        return map(add_mem, self.supervisor.getAllProcessInfo())
 
     def restart_process(self, name):
         """Start and stop a process running under supervisor"""

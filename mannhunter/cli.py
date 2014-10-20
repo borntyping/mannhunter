@@ -23,10 +23,24 @@ import mannhunter.core
     '-l', '--loglevel', default='info',
     type=click.Choice(['info', 'warning', 'debug', 'error', 'critical']),
     help="The level to log at")
-def main(config, host, port, loglevel):
+@click.option(
+    '-s', '--stats', is_flag=True,
+    help="Prints out some mannhunter stats, does not run the daemon.")
+def main(config, host, port, loglevel, stats):
     logging.basicConfig(
         level=getattr(logging, loglevel.upper()),
         format='%(asctime)s:%(levelname)s:%(name)s:%(message)s')
 
-    return mannhunter.core.Mannhunter.configure(
-        config, host=host, port=port).run()
+    m = mannhunter.core.Mannhunter.configure(config, host=host, port=port)
+
+    if stats:
+        for service in m.stats():
+            if service['mem_limit'] is not None:
+                print "{0} {1} / {2}  ({3:.2%})".format(service['name'],
+                    mannhunter.core.sizeof_fmt(service['mem_used']),
+                    mannhunter.core.sizeof_fmt(service['mem_limit']),
+                    float(service['mem_used']) / float(service['mem_limit']))
+
+        return 0
+    else:
+        return m.run()
