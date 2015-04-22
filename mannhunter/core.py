@@ -50,7 +50,6 @@ class Interval(object):
             time.sleep(interval)
 
         self.last = time.time()
-        return True
 
 
 class MannhunterConfigParser(ConfigParser.RawConfigParser):
@@ -160,7 +159,6 @@ class Mannhunter(object):
     def __exit__(self, *exc_info):
         if self.riemann is not None:
             self.riemann.__exit__(*exc_info)
-        return self
 
     @property
     def supervisor(self):
