@@ -45,7 +45,10 @@ class Interval(object):
         return self
 
     def __exit__(self, *exc_info):
-        time.sleep(self.interval - (time.time() - self.last))
+        interval = self.interval - (time.time() - self.last)
+        if interval > 0:
+            time.sleep(interval)
+
         self.last = time.time()
         return True
 
