@@ -19,10 +19,21 @@ import mannhunter.core
 @click.option(
     '-P', '--port', envvar='RIEMANN_PORT', type=click.INT, default=5555,
     help="Riemann server port")
-def main(config, host, port):
+@click.option(
+    '-l', '--loglevel', default='info',
+    type=click.Choice(['info', 'warning', 'debug', 'error', 'critical']),
+    help="The level to log at")
+@click.option(
+    '-s', '--stats', is_flag=True,
+    help="Prints out some mannhunter stats, does not run the daemon.")
+def main(config, host, port, loglevel, stats):
     logging.basicConfig(
-        level=logging.DEBUG,
+        level=getattr(logging, loglevel.upper()),
         format='%(asctime)s:%(levelname)s:%(name)s:%(message)s')
 
-    return mannhunter.core.Mannhunter.configure(
-        config, host=host, port=port).run()
+    m = mannhunter.core.Mannhunter.configure(config, host=host, port=port)
+
+    if stats:
+        return m.stats()
+
+    return m.run()
