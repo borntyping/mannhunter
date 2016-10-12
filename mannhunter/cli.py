@@ -34,14 +34,6 @@ def main(config, host, port, loglevel, stats):
     m = mannhunter.core.Mannhunter.configure(config, host=host, port=port)
 
     if stats:
-        for service in m.stats():
-            if service['mem_limit'] is not None:
-                print "{0} {1} / {2}  ({3:.2%})".format(
-                    service['name'],
-                    mannhunter.core.sizeof_fmt(service['mem_used']),
-                    mannhunter.core.sizeof_fmt(service['mem_limit']),
-                    float(service['mem_used']) / float(service['mem_limit']))
+        return m.stats()
 
-        return 0
-    else:
-        return m.run()
+    return m.run()

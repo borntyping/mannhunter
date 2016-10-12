@@ -189,10 +189,13 @@ class Mannhunter(object):
             if data['pid'] != 0:
                 self.limit_memory(data)
 
+    def limit(self, name):
+        return self.limits.get(name, self.default_limit)
+
     def limit_memory(self, data):
         """Restart a process if it has used more than it's memory limit"""
         rss, vms = psutil.Process(data['pid']).memory_info()
-        limit = self.limits.get(data['name'], self.default_limit)
+        limit = self.limit(data['name'])
         usage = percentage(rss, limit)
         self.riemann_event(
             service='process:{0}:limits:mem'.format(data['name']),
@@ -201,24 +204,6 @@ class Mannhunter(object):
                 data['name'], rss, limit, usage))
         if rss > limit:
             self.restart_process(data['name'])
-
-    def stats(self):
-        """Returns the current state of the services in supervisor."""
-        def add_mem(service):
-            """Adds current memory usage and limit to a service."""
-            try:
-                rss, vms = psutil.Process(service['pid']).memory_info()
-                service['mem_used'] = rss
-                service['mem_limit'] = self.limits[service['name']]
-            except psutil.NoSuchProcess:
-                service['mem_used'] = None
-                service['mem_limit'] = None
-            except KeyError:
-                service['mem_limit'] = None
-
-            return service
-
-        return map(add_mem, self.supervisor.getAllProcessInfo())
 
     def restart_process(self, name):
         """Start and stop a process running under supervisor"""
@@ -231,3 +216,19 @@ class Mannhunter(object):
         if self.riemann:
             self.riemann.event(**event)
         self.log.debug(event.get('description', "Sent an event to Riemann"))
+
+    def stats(self):
+        """Returns the current state of the services in supervisor."""
+        for service in self.supervisor.getAllProcessInfo():
+            try:
+                rss, vms = psutil.Process(service['pid']).memory_info()
+            except psutil.NoSuchProcess:
+                rss, vms = None, None
+
+            limit = self.limit(service['name'])
+
+            print("{0:15} {1:>8} / {2:<8} ({3:.2%})".format(
+                service['name'],
+                sizeof_fmt(rss),
+                sizeof_fmt(limit),
+                float(rss) / float(limit)))
