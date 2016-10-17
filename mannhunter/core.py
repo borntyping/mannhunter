@@ -221,9 +221,9 @@ class Mannhunter(object):
         """Returns the current state of the services in supervisor."""
         for service in self.supervisor.getAllProcessInfo():
             try:
-                rss, vms = psutil.Process(service['pid']).memory_info()
+                rss = psutil.Process(service['pid']).memory_info()[0]
             except psutil.NoSuchProcess:
-                rss, vms = None, None
+                rss = None
 
             limit = self.limit(service['name'])
 
